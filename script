@@ -42,6 +42,8 @@ end
 local RF, EggRF, ClickRF, CritRF, PetRF, MutateRF, UpgradeRF, AscendRF
 
 task.spawn(function()
+    repeat task.wait() until RS:FindFirstChild("Packages")
+
     RF        = getRemote({"Packages","Knit","Services","CarrotSpawningService","RF","CarrotCollected"})
     EggRF     = getRemote({"Packages","Knit","Services","EggService","RF","purchaseEgg"})
     ClickRF   = getRemote({"Packages","Knit","Services","ArmWrestleService","RF","RequestClick"})
@@ -61,7 +63,9 @@ local function collectCarrot(carrot)
     local guid = carrot:GetAttribute("CarrotGuid")
 
     if zone and guid then
-        RF:InvokeServer(zone, guid)
+        pcall(function()
+            RF:InvokeServer(zone, guid)
+        end)
         carrot:Destroy()
     end
 end
@@ -84,30 +88,24 @@ local function stopCollecting()
     end
 end
 
--- AUTO MUTATE
-local function runMutate()
+-- AUTO MUTATE (ALL PETS)
+local function autoMutateAll()
     if not PetRF or not MutateRF then return end
 
-    local pets = PetRF:InvokeServer()
-    if typeof(pets) ~= "table" then return end
+    local success, pets = pcall(function()
+        return PetRF:InvokeServer()
+    end)
 
-    local valid = {}
+    if not success or typeof(pets) ~= "table" then return end
+
     for uuid, data in pairs(pets) do
-        if not data.Locked and not data.Cure then
-            table.insert(valid, uuid)
+        if data and not data.Locked and not data.Cure then
+            pcall(function()
+                MutateRF:InvokeServer(uuid, {})
+            end)
+            task.wait(0.5) -- small delay to avoid spam
         end
     end
-
-    if #valid < 2 then return end
-
-    local main = valid[1]
-    local sacrifices = {}
-
-    for i = 2, math.min(6, #valid) do
-        table.insert(sacrifices, valid[i])
-    end
-
-    MutateRF:InvokeServer(main, sacrifices)
 end
 
 -- AUTO UPGRADE 
@@ -128,26 +126,24 @@ local function startAutoUpgrade()
     end
 end
 
--- AUTO CLICK (not workin)
+-- AUTO CLICK
 local function startClicking()
     task.spawn(function()
-        local camera = workspace.CurrentCamera
-        VirtualUser:CaptureController()
-
         while clicking do
-            if not camera then
-                camera = workspace.CurrentCamera
+            if ClickRF then
+                pcall(function()
+                    ClickRF:InvokeServer(true)
+                end)
             end
 
-            if camera then
-                local v = camera.ViewportSize
-                local center = Vector2.new(v.X / 2, v.Y / 2)
-
-                VirtualUser:Button1Down(center)
-                VirtualUser:Button1Up(center)
+            -- occasionally attempt crits
+            if CritRF then
+                pcall(function()
+                    CritRF:InvokeServer()
+                end)
             end
 
-            task.wait()
+            task.wait(0.03) -- adjust speed if needed
         end
     end)
 end
@@ -156,9 +152,11 @@ end
 local function startHatching()
     while hatching do
         if EggRF then
-            EggRF:InvokeServer("Bunny", nil, nil, false)
+            pcall(function()
+                EggRF:InvokeServer("Bunny", nil, nil, false)
+            end)
         end
-        task.wait(0.05)
+        task.wait(0.1)
     end
 end
 
@@ -174,6 +172,16 @@ local function startAutoAscend()
     end
 end
 
+-- MUTATE TAB
+local MutateTab = Window:CreateTab("Mutate", 4483362458)
+
+MutateTab:CreateButton({
+    Name = "Mutate All Non-Mutated Pets",
+    Callback = function()
+        autoMutateAll()
+    end
+})
+
 -- UI
 
 MainTab:CreateToggle({
@@ -181,13 +189,6 @@ MainTab:CreateToggle({
     Callback = function(v)
         clicking = v
         if v then task.spawn(startClicking) end
-    end
-})
-
-MainTab:CreateButton({
-    Name = "Auto Mutate",
-    Callback = function()
-        task.spawn(runMutate)
     end
 })
 

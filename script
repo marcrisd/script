@@ -1,0 +1,228 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "MRC Hub",
+    LoadingTitle = "MRC Hub",
+    LoadingSubtitle = "Made by MRC",
+    Theme = "Default",
+})
+
+task.wait(2)
+
+local MainTab = Window:CreateTab("Main", 4483362458)
+local EventTab = Window:CreateTab("Event", 4483362458)
+
+-- SERVICES
+local RS = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
+
+-- ANTI AFK
+Players.LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+-- STATE
+local collecting, hatching, clicking, mutating, upgrading, ascending = false, false, false, false, false, false
+local connection = nil
+
+-- REMOTE LOADER
+local function getRemote(path)
+    local ok, result = pcall(function()
+        local node = RS
+        for _, key in ipairs(path) do
+            node = node:WaitForChild(key, 5)
+        end
+        return node
+    end)
+    return ok and result or nil
+end
+
+local RF, EggRF, ClickRF, CritRF, PetRF, MutateRF, UpgradeRF, AscendRF
+
+task.spawn(function()
+    RF        = getRemote({"Packages","Knit","Services","CarrotSpawningService","RF","CarrotCollected"})
+    EggRF     = getRemote({"Packages","Knit","Services","EggService","RF","purchaseEgg"})
+    ClickRF   = getRemote({"Packages","Knit","Services","ArmWrestleService","RF","RequestClick"})
+    CritRF    = getRemote({"Packages","Knit","Services","ArmWrestleService","RF","RequestCritHit"})
+    PetRF     = getRemote({"Packages","Knit","Services","PetService","RF","getOwned"})
+    MutateRF  = getRemote({"Packages","Knit","Services","PetCombineService","RF","mutate"})
+    UpgradeRF = getRemote({"Packages","Knit","Services","CarrotUpgradesService","RF","BuyUpgrade"})
+    AscendRF  = getRemote({"Packages","Knit","Services","CarrotAscensionService","RF","BuyAscension"})
+end)
+
+-- AUTO COLLECT CARROTS 
+local carrotFolder = workspace:WaitForChild("GameObjects"):WaitForChild("Carrots")
+
+local function collectCarrot(carrot)
+    if not RF then return end
+    local zone = carrot:GetAttribute("CarrotZone")
+    local guid = carrot:GetAttribute("CarrotGuid")
+
+    if zone and guid then
+        RF:InvokeServer(zone, guid)
+        carrot:Destroy()
+    end
+end
+
+local function startCollecting()
+    for _, carrot in ipairs(carrotFolder:GetChildren()) do
+        collectCarrot(carrot)
+    end
+
+    connection = carrotFolder.ChildAdded:Connect(function(carrot)
+        task.wait(0.05)
+        collectCarrot(carrot)
+    end)
+end
+
+local function stopCollecting()
+    if connection then
+        connection:Disconnect()
+        connection = nil
+    end
+end
+
+-- AUTO MUTATE
+local function runMutate()
+    if not PetRF or not MutateRF then return end
+
+    local pets = PetRF:InvokeServer()
+    if typeof(pets) ~= "table" then return end
+
+    local valid = {}
+    for uuid, data in pairs(pets) do
+        if not data.Locked and not data.Cure then
+            table.insert(valid, uuid)
+        end
+    end
+
+    if #valid < 2 then return end
+
+    local main = valid[1]
+    local sacrifices = {}
+
+    for i = 2, math.min(6, #valid) do
+        table.insert(sacrifices, valid[i])
+    end
+
+    MutateRF:InvokeServer(main, sacrifices)
+end
+
+-- AUTO UPGRADE 
+local function startAutoUpgrade()
+    while upgrading do
+        if UpgradeRF then
+            pcall(function()
+                UpgradeRF:InvokeServer("BunnyBurrow", "MoreCarrots")
+            end)
+
+            task.wait(0.2)
+
+            pcall(function()
+                UpgradeRF:InvokeServer("BunnyBurrow", "MoreSpawns")
+            end)
+        end
+        task.wait(0.5)
+    end
+end
+
+-- AUTO CLICK (not workin)
+local function startClicking()
+    task.spawn(function()
+        local camera = workspace.CurrentCamera
+        VirtualUser:CaptureController()
+
+        while clicking do
+            if not camera then
+                camera = workspace.CurrentCamera
+            end
+
+            if camera then
+                local v = camera.ViewportSize
+                local center = Vector2.new(v.X / 2, v.Y / 2)
+
+                VirtualUser:Button1Down(center)
+                VirtualUser:Button1Up(center)
+            end
+
+            task.wait()
+        end
+    end)
+end
+
+-- AUTO HATCH
+local function startHatching()
+    while hatching do
+        if EggRF then
+            EggRF:InvokeServer("Bunny", nil, nil, false)
+        end
+        task.wait(0.05)
+    end
+end
+
+-- AUTO ASCEND
+local function startAutoAscend()
+    while ascending do
+        if AscendRF then
+            pcall(function()
+                AscendRF:InvokeServer("BunnyBurrow")
+            end)
+        end
+        task.wait(math.random(3,5))
+    end
+end
+
+-- UI
+
+MainTab:CreateToggle({
+    Name = "Auto Fight Boss",
+    Callback = function(v)
+        clicking = v
+        if v then task.spawn(startClicking) end
+    end
+})
+
+MainTab:CreateButton({
+    Name = "Auto Mutate",
+    Callback = function()
+        task.spawn(runMutate)
+    end
+})
+
+EventTab:CreateToggle({
+    Name = "Auto Collect Carrots",
+    Callback = function(v)
+        collecting = v
+        if v then
+            task.spawn(startCollecting)
+        else
+            stopCollecting()
+        end
+    end
+})
+
+EventTab:CreateToggle({
+    Name = "Auto Hatch",
+    Callback = function(v)
+        hatching = v
+        if v then task.spawn(startHatching) end
+    end
+})
+
+EventTab:CreateToggle({
+    Name = "Auto Upgrade",
+    Callback = function(v)
+        upgrading = v
+        if v then task.spawn(startAutoUpgrade) end
+    end
+})
+
+EventTab:CreateToggle({
+    Name = "Auto Ascend",
+    Callback = function(v)
+        ascending = v
+        if v then task.spawn(startAutoAscend) end
+    end
+})

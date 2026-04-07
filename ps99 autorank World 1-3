@@ -121,6 +121,8 @@ local function u17()
         v16 = u5.Get('TechCoins')
     elseif v15 == 3 then
         v16 = u5.Get('VoidCoins')
+    elseif v15 == 4 then
+        v16 = u5.Get('FantasyCoins')
     end
 
     return v16

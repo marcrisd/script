@@ -1,0 +1,1466 @@
+local u1 = require(game:GetService('ReplicatedStorage').Library.Client.Save)
+local u2 = require(game:GetService('ReplicatedStorage').Library.Client.Network)
+local u3 = require(game.ReplicatedStorage.Library.Client.EggCmds)
+
+require(game:GetService('ReplicatedStorage').Library.Client.PetCmds)
+
+local u4 = require(game.ReplicatedStorage.Library.Client.ZoneCmds)
+local u5 = require(game:GetService('ReplicatedStorage').Library.Client.CurrencyCmds)
+local u6 = require(game.ReplicatedStorage.Library.Client.RebirthCmds)
+local u7 = require(game.ReplicatedStorage.Library.Util.WorldsUtil)
+local u8 = require(game:GetService('ReplicatedStorage').Library.Directory.Eggs)
+local u9 = require(game:GetService('ReplicatedStorage').Library.Directory.Zones)
+local _Inventory = u1.Get().Inventory
+local _Goals = require(game:GetService('ReplicatedStorage').Library.Types.Quests).Goals
+local u12 = require(game:GetService('ReplicatedStorage').Library.Balancing.CalcGatePrice)
+local u13 = require(game:GetService('ReplicatedStorage').Library.Balancing.CalcEggPricePlayer)
+
+-- ════════════════════════════════════════
+--           STATUS TRACKING
+-- ════════════════════════════════════════
+local CurrentStatus = "Starting..."
+local CurrentQuest = "None"
+
+local function SetStatus(status, quest)
+    CurrentStatus = status
+    if quest then
+        CurrentQuest = quest
+    end
+end
+
+-- ════════════════════════════════════════
+--              STATUS GUI
+-- ════════════════════════════════════════
+local LocalPlayer = game:GetService('Players').LocalPlayer
+
+-- Remove old GUI if re-executing
+local existingGui = LocalPlayer.PlayerGui:FindFirstChild('MRCAutoRankGui')
+if existingGui then existingGui:Destroy() end
+
+local ScreenGui = Instance.new('ScreenGui')
+ScreenGui.Name = 'MRCAutoRankGui'
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent = LocalPlayer.PlayerGui
+
+local Frame = Instance.new('Frame')
+Frame.Size = UDim2.new(0, 240, 0, 70)
+Frame.Position = UDim2.new(1, -250, 1, -90)
+Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Frame.BackgroundTransparency = 0.3
+Frame.BorderSizePixel = 0
+Frame.Parent = ScreenGui
+
+Instance.new('UICorner', Frame).CornerRadius = UDim.new(0, 8)
+
+local Stroke = Instance.new('UIStroke', Frame)
+Stroke.Color = Color3.fromRGB(100, 200, 255)
+Stroke.Thickness = 1.5
+
+local TitleLabel = Instance.new('TextLabel', Frame)
+TitleLabel.Size = UDim2.new(1, -10, 0, 22)
+TitleLabel.Position = UDim2.new(0, 10, 0, 5)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = 'MRC AutoRank'
+TitleLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+TitleLabel.TextSize = 13
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local StatusLabel = Instance.new('TextLabel', Frame)
+StatusLabel.Size = UDim2.new(1, -10, 0, 18)
+StatusLabel.Position = UDim2.new(0, 10, 0, 26)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = 'Status: Starting...'
+StatusLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+StatusLabel.TextSize = 11
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.TextTruncate = Enum.TextTruncate.AtEnd
+
+local QuestLabel = Instance.new('TextLabel', Frame)
+QuestLabel.Size = UDim2.new(1, -10, 0, 18)
+QuestLabel.Position = UDim2.new(0, 10, 0, 44)
+QuestLabel.BackgroundTransparency = 1
+QuestLabel.Text = 'Quest: None'
+QuestLabel.TextColor3 = Color3.fromRGB(180, 255, 160)
+QuestLabel.TextSize = 11
+QuestLabel.Font = Enum.Font.Gotham
+QuestLabel.TextXAlignment = Enum.TextXAlignment.Left
+QuestLabel.TextTruncate = Enum.TextTruncate.AtEnd
+
+-- Keep GUI labels updated
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        StatusLabel.Text = 'Status: ' .. CurrentStatus
+        QuestLabel.Text = 'Quest: ' .. CurrentQuest
+    end
+end)
+
+-- ════════════════════════════════════════
+--           CORE FUNCTIONS
+-- ════════════════════════════════════════
+function UpdateInventory()
+    _Inventory = u1.Get().Inventory
+end
+function GetBestEggNumber()
+    return u4.GetMaximumOverallZone().MaximumAvailableEgg
+end
+
+local function u14()
+    return u7.GetWorld().WorldNumber
+end
+local function u17()
+    local v15 = u14()
+    local v16 = nil
+
+    if v15 == 1 then
+        v16 = u5.Get('Coins')
+    elseif v15 == 2 then
+        v16 = u5.Get('TechCoins')
+    elseif v15 == 3 then
+        v16 = u5.Get('VoidCoins')
+    end
+
+    return v16
+end
+
+function GetBestEggModule()
+    local v18, v19, v20 = pairs(u8)
+
+    while true do
+        local v21
+
+        v20, v21 = v18(v19, v20)
+
+        if v20 == nil then
+            break
+        end
+        if v21.eggNumber == GetBestEggNumber() then
+            return v21
+        end
+    end
+
+    return nil
+end
+
+local function u30()
+    local v22 = u14()
+    local v23 = GetBestEggNumber()
+    local v24 = workspace.__THINGS.Eggs:FindFirstChild('World' .. v22)
+    local v25, v26, v27 = pairs(v24:GetChildren())
+
+    while true do
+        local v28
+
+        v27, v28 = v25(v26, v27)
+
+        if v27 == nil then
+            break
+        end
+
+        local v29 = v28.Name:split(' ')
+
+        if tonumber(v29[1]) == v23 then
+            return v28
+        end
+    end
+
+    return nil
+end
+
+function GetPetsFromEgg()
+    local v31 = GetBestEggModule()
+    local v32, v33, v34 = pairs(v31.pets)
+    local v35 = {}
+
+    while true do
+        local v36
+
+        v34, v36 = v32(v33, v34)
+
+        if v34 == nil then
+            break
+        end
+        if not v36[1]:match('Huge') then
+            table.insert(v35, v36[1])
+        end
+    end
+
+    return v35
+end
+
+local function u43()
+    local v37, v38, v39 = pairs(u9)
+    local v40 = 0
+    local v41 = nil
+
+    while true do
+        local v42
+
+        v39, v42 = v37(v38, v39)
+
+        if v39 == nil then
+            break
+        end
+        if v40 < v42.ZoneNumber then
+            v40 = v42.ZoneNumber
+            v41 = v42
+        end
+    end
+
+    return v41
+end
+local function u44()
+    return u4.GetMaximumZone()
+end
+
+function GetBestZoneFolder()
+    return u4.GetMaximumZone().ZoneFolder
+end
+function GetBestZoneName()
+    return u4.GetMaximumZone()._id
+end
+function GetBestZoneScript()
+    return u4.GetMaximumZone()._script
+end
+function GetBestZoneWorld()
+    return u4.GetMaximumZone().WorldNumber
+end
+function GetBestZoneNumber()
+    return u4.GetMaximumZone().ZoneNumber
+end
+
+local function u50()
+    local v45 = GetBestZoneNumber() + 1
+    local v46, v47, v48 = pairs(u9)
+
+    while true do
+        local v49
+
+        v48, v49 = v46(v47, v48)
+
+        if v48 == nil then
+            break
+        end
+        if v49.ZoneNumber == v45 then
+            return v49
+        end
+    end
+
+    return nil
+end
+
+function GetCurrentZoneQuests()
+    return u1.Get().ZoneGateQuest
+end
+function GetZoneToPurchase()
+    return u1.Get().ZoneGateQuestID
+end
+function GetBestNormalPetsUID()
+    local _Pet = require(game.ReplicatedStorage.Library.Client.Save).Get().Inventory.Pet
+    local v52 = GetPetsFromEgg()
+    local v53, v54, v55 = pairs(_Pet)
+    local v56 = {}
+
+    while true do
+        local v57
+
+        v55, v57 = v53(v54, v55)
+
+        if v55 == nil then
+            break
+        end
+        if table.find(v52, v57.id) and not (v57.pt or v57.sh) then
+            v56[v55] = {
+                PetName = v57.id,
+                Rarity = v57.pt or 0,
+                UID = v55,
+                Amount = v57._am or 1,
+            }
+        end
+    end
+
+    return v56
+end
+function GetBestGoldenPetsUID()
+    local _Pet2 = require(game.ReplicatedStorage.Library.Client.Save).Get().Inventory.Pet
+    local v59 = GetPetsFromEgg()
+    local v60, v61, v62 = pairs(_Pet2)
+    local v63 = {}
+
+    while true do
+        local v64
+
+        v62, v64 = v60(v61, v62)
+
+        if v62 == nil then
+            break
+        end
+        if table.find(v59, v64.id) and (v64.pt == 1 and not v64.sh) then
+            v63[v62] = {
+                PetName = v64.id,
+                Rarity = v64.pt,
+                UID = v62,
+                Amount = v64._am or 1,
+            }
+        end
+    end
+
+    return v63
+end
+function GetBestRainbowPetsUID()
+    local _Pet3 = require(game.ReplicatedStorage.Library.Client.Save).Get().Inventory.Pet
+    -- FIX: was GetPetsFromBestEgg() which doesn't exist
+    local v66, v67, v68 = pairs(GetPetsFromEgg())
+    local v69 = {}
+
+    while true do
+        local v70
+
+        v68, v70 = v66(v67, v68)
+
+        if v68 == nil then
+            break
+        end
+
+        v69[v70] = true
+    end
+
+    local v71, v72, v73 = pairs(_Pet3)
+
+    while true do
+        local v74
+
+        v73, v74 = v71(v72, v73)
+
+        if v73 == nil then
+            break
+        end
+        if v69[v74.id] and (v74.pt == 2 and not v74.sh) then
+            print('Found', v74.id, v74.pt, v74.sh or false, v73)
+        end
+    end
+end
+function UseComet()
+    local v75, v76, v77 = pairs(_Inventory.Misc)
+    local v78 = nil
+
+    while true do
+        local v79
+
+        v77, v79 = v75(v76, v77)
+
+        if v77 == nil then
+            v77 = v78
+            break
+        end
+        if v79.id == 'Comet' then
+            local _ = v79._am
+            break
+        end
+    end
+
+    game:GetService('ReplicatedStorage'):WaitForChild('Network'):WaitForChild('Comet_Spawn'):InvokeServer(unpack({ tostring(v77) }))
+end
+function UseCoinJar()
+    local v81, v82, v83 = pairs(_Inventory.Misc)
+    local v84 = nil
+
+    while true do
+        local v85
+
+        v83, v85 = v81(v82, v83)
+
+        if v83 == nil then
+            v83 = v84
+            break
+        end
+        if v85.id == 'Basic Coin Jar' then
+            local _ = v85._am
+            break
+        end
+    end
+
+    game:GetService('ReplicatedStorage'):WaitForChild('Network'):WaitForChild('CoinJar_Spawn'):InvokeServer(unpack({ tostring(v83) }))
+end
+function UseLuckyBlock()
+    local v87, v88, v89 = pairs(_Inventory.Misc)
+    local v90 = nil
+
+    while true do
+        local v91
+
+        v89, v91 = v87(v88, v89)
+
+        if v89 == nil then
+            v89 = v90
+            break
+        end
+        if v91.id == 'Mini Lucky Block' then
+            local _ = v91._am
+            break
+        end
+    end
+
+    game:GetService('ReplicatedStorage'):WaitForChild('Network'):WaitForChild('MiniLuckyBlock_Consume'):InvokeServer(unpack({ tostring(v89) }))
+end
+function UsePinata()
+    local v93, v94, v95 = pairs(_Inventory.Misc)
+    local v96 = nil
+
+    while true do
+        local v97
+
+        v95, v97 = v93(v94, v95)
+
+        if v95 == nil then
+            v95 = v96
+            break
+        end
+        if v97.id == 'Mini Pinata' then
+            local _ = v97._am
+            break
+        end
+    end
+
+    game:GetService('ReplicatedStorage'):WaitForChild('Network'):WaitForChild('MiniPinata_Consume'):InvokeServer(unpack({ tostring(v95) }))
+end
+function UsePotion(p99, p100)
+    local _Potion = _Inventory.Potion
+    local v102, v103, v104 = pairs(_Potion)
+
+    while true do
+        local v105
+
+        v104, v105 = v102(v103, v104)
+
+        if v104 == nil then
+            break
+        end
+        if p99 <= v105.tn and p100 <= (v105._am or 1) then
+            u2.Fire('Potions: Consume', tostring(v104), p100)
+            break
+        end
+    end
+end
+
+local u106 = {
+    BEST_RAINBOW_PET = 1,
+    BEST_GOLD_PET = 1,
+    USE_FLAG = 2,
+    USE_POTION = 1,
+    COLLECT_POTION = 1,
+    COLLECT_ENCHANT = 1,
+    BEST_COMET = 2,
+    BEST_COIN_JAR = 2,
+    BEST_LUCKYBLOCK = 2,
+    BEST_PINATA = 2,
+    BEST_EGG = 3,
+    CURRENT_BREAKABLE = 3,
+    BEST_SUPERIOR_MINI_CHEST = 4,
+    DIAMOND_BREAKABLE = 4,
+    BEST_MINI_CHEST = 4,
+    HATCH_RARE_PET = 4,
+    CURRENCY = 5,
+}
+local u107 = require(game:GetService('ReplicatedStorage').Library.Balancing.CalcPotionsPerTierRequired)
+local u108 = require(game:GetService('ReplicatedStorage').Library.Balancing.CalcEnchantsPerTierRequired)
+
+local function u118(p109)
+    if p109 then
+        local _Potion2 = _Inventory.Potion
+        local v111, v112, v113 = pairs(_Potion2)
+
+        while true do
+            local v114
+
+            v113, v114 = v111(v112, v113)
+
+            if v113 == nil then
+                break
+            end
+
+            local u115 = false
+
+            local function v116()
+                u115 = true
+            end
+
+            if v114.tn > 1 and v114.tn <= 4 then
+                setthreadidentity(4)
+
+                local v117 = u107(v114.tn) * p109
+
+                print('Potions DEBUG PRINT', v114.id, v114.tn, v114._am or 1, v117)
+
+                if v117 < (v114._am or 1) then
+                    print('Combining:', v114.id, v114.tn, v117)
+                    u2.Invoke('UpgradePotionsMachine_Activate', v113, p109)
+                    v116()
+                end
+            end
+            if u115 then
+                break
+            end
+        end
+    end
+end
+
+local u119 = {
+    'Magnet 3',
+}
+
+local function u129(p120)
+    if p120 then
+        local _Enchant = _Inventory.Enchant
+        local v122, v123, v124 = pairs(_Enchant)
+
+        while true do
+            local v125
+
+            v124, v125 = v122(v123, v124)
+
+            if v124 == nil then
+                break
+            end
+
+            local u126 = false
+
+            local function v127()
+                u126 = true
+            end
+
+            if v125.tn > 1 and (v125.tn <= 3 and not table.find(u119, v125.id .. ' ' .. v125.tn)) then
+                setthreadidentity(4)
+
+                local v128 = u108(v125.tn) * p120
+
+                print('Enchant DEBUG PRINT', v125.id, v125.tn, v125._am or 1, v128)
+
+                if v128 < (v125._am or 1) then
+                    print('Combining:', v125.id, v125.tn, math.floor(v128))
+                    u2.Invoke('UpgradeEnchantsMachine_Activate', v124, p120)
+                    v127()
+                end
+            end
+            if u126 then
+                break
+            end
+        end
+    end
+end
+
+local u130 = require(game:GetService('ReplicatedStorage').Library.Util.WorldsUtil)
+local u131 = game:GetService('ReplicatedStorage').__DIRECTORY.Eggs['Zone Eggs'][u130.GetWorld()._id]
+
+function FindClosestCustomEgg()
+    if game.Players.LocalPlayer.Character then
+        local _HumanoidRootPart = game.Players.LocalPlayer.Character.HumanoidRootPart
+        local _CustomEggs = workspace.__THINGS.CustomEggs
+        local _huge = math.huge
+        local v135, v136, v137 = pairs(_CustomEggs:GetChildren())
+        local v138 = nil
+
+        while true do
+            local v139
+
+            v137, v139 = v135(v136, v137)
+
+            if v137 == nil then
+                break
+            end
+            if v139:IsA('Model') then
+                local _Magnitude = (_HumanoidRootPart.Position - v139.WorldPivot.Position).Magnitude
+
+                if _Magnitude < _huge then
+                    v138 = v139
+                    _huge = _Magnitude
+                end
+            end
+        end
+
+        return v138, _huge
+    end
+end
+function FindClosestEgg()
+    local _HumanoidRootPart2 = game.Players.LocalPlayer.Character.HumanoidRootPart
+    local v142 = workspace.__THINGS.Eggs[u130.GetEggsModelName()]
+    local _huge2 = math.huge
+    local v144, v145, v146 = pairs(v142:GetChildren())
+    local v147 = nil
+
+    while true do
+        local v148
+
+        v146, v148 = v144(v145, v146)
+
+        if v146 == nil then
+            break
+        end
+        if v148:IsA('Model') then
+            local _Magnitude2 = (_HumanoidRootPart2.Position - v148:FindFirstChild('Light').CFrame.Position).Magnitude
+
+            if _Magnitude2 < _huge2 then
+                v147 = v148
+                _huge2 = _Magnitude2
+            end
+        end
+    end
+
+    if not v147 then
+        return nil, math.huge
+    end
+
+    local v150 = string.split(v147.Name, ' ')
+    local v151 = u131
+    local v152, v153, v154 = pairs(v151:GetDescendants())
+    local v155 = nil
+
+    while true do
+        local v156
+
+        v154, v156 = v152(v153, v154)
+
+        if v154 == nil then
+            v156 = v155
+            break
+        end
+        if v156.Name:match(v150[1]) then
+            local v157 = string.split(v156.Name, ' ')
+
+            if v157[6] then
+                v147 = v157[3] .. ' ' .. v157[4] .. ' ' .. v157[5] .. ' ' .. v157[6]
+            elseif v157[5] then
+                v147 = v157[3] .. ' ' .. v157[4] .. ' ' .. v157[5]
+            else
+                v147 = v157[3] .. ' ' .. v157[4]
+            end
+
+            break
+        end
+    end
+
+    -- FIX: if directory loop never matched, v147 is still a Model not a string
+    if type(v147) ~= 'string' then
+        return nil, math.huge, nil
+    end
+
+    return v147, _huge2, v156
+end
+
+local function u164()
+    local v158 = require(game:GetService('ReplicatedStorage').Library.Client.EggCmds).GetMaxHatch()
+    local v159, v160 = FindClosestCustomEgg()
+    local v161, v162 = FindClosestEgg()
+
+    v160 = v160 or math.huge
+    v162 = v162 or math.huge
+
+    if v159 and v160 < v162 then
+        SetStatus('Hatching custom egg')
+        u2.Invoke('CustomEggs_Hatch', unpack({ tostring(v159), v158 }))
+    elseif v161 and type(v161) == 'string' then
+        SetStatus('Hatching egg: ' .. v161)
+        u2.Invoke('Eggs_RequestPurchase', unpack({ v161, v158 }))
+    end
+end
+local function u171(p165, p166)
+    local v167, v168, v169 = pairs(p165)
+
+    while true do
+        local v170
+
+        v169, v170 = v167(v168, v169)
+
+        if v169 == nil then
+            break
+        end
+        if v170.Amount >= (p166 + 1) * 10 then
+            return true, v169, v170.Amount, v170.PetName
+        end
+    end
+
+    return false, nil, 0
+end
+
+function MakeQuest(p172, p173)
+    print(p172, type(p172), p173, '-- MakeQuest')
+    table.foreach(p173, warn)
+
+    if p172 == 'BEST_RAINBOW_PET' then
+        SetStatus('Converting to rainbow pet', 'BEST_RAINBOW_PET')
+        local v174 = GetBestEggModule()
+
+        setthreadidentity(4)
+
+        local v175 = u13(v174) * u3.GetMaxHatch()
+        local v176 = u17()
+        local v177, v178, v179, v180 = u171(GetBestGoldenPetsUID(), p173.neededamount)
+        local v181
+
+        if p173.neededamount > 0 then
+            v181 = false
+        else
+            v177 = false
+            v181 = true
+        end
+        if v177 then
+            print('You can Convert:', v180, 'amount:', v179, 'uid:', v178)
+            SetStatus('Activating rainbow machine')
+            return u2.Invoke('RainbowMachine_Activate', v178, p173.neededamount + 1)
+        end
+        if v175 * 3 > v176 or v181 then
+            SetStatus('Going to zone (low coins)')
+            local v182 = GetBestZoneFolder()
+
+            if not v182:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v182.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v182.PERSISTENT.Teleport.CFrame
+
+                while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v182:FindFirstChild('INTERACT') do
+                    wait(0.01)
+                end
+
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v182:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+            end
+        else
+            SetStatus('Converting normal pets to gold')
+            local v183 = GetBestNormalPetsUID()
+            local v184 = u14()
+            local _PriceHUD = u30():FindFirstChild('PriceHUD')
+            local v186, v187
+
+            if v184 == 3 then
+                v186 = 35
+                v187 = 30
+            else
+                v186 = 5
+                v187 = 1
+            end
+            if v186 <= (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - _PriceHUD.Position).Magnitude then
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = _PriceHUD.CFrame + _PriceHUD.CFrame.LookVector * v187
+            end
+
+            u164()
+
+            local v188, v189, v190 = pairs(v183)
+
+            while true do
+                local v191
+
+                v190, v191 = v188(v189, v190)
+
+                if v190 == nil then
+                    break
+                end
+                if v191.Amount >= 10 then
+                    u2.Invoke('GoldMachine_Activate', v190, math.floor(v191.Amount / 10))
+                    print('Converted:', math.floor(v191.Amount / 10), v191.PetName)
+                end
+            end
+        end
+    elseif p172 == 'BEST_GOLD_PET' then
+        SetStatus('Converting pets to gold', 'BEST_GOLD_PET')
+        local v192 = GetBestEggModule()
+
+        setthreadidentity(4)
+
+        local v193 = u13(v192) * u3.GetMaxHatch()
+        local v194 = u17()
+        local v195, v196, v197, v198 = u171(GetBestNormalPetsUID(), p173.neededamount)
+        local v199
+
+        if p173.neededamount > 0 then
+            v199 = false
+        else
+            v195 = false
+            v199 = true
+        end
+        if v195 then
+            print('You can Convert:', v198, 'amount:', v197, 'uid:', v196)
+            SetStatus('Activating gold machine')
+            return u2.Invoke('GoldMachine_Activate', v196, p173.neededamount + 1)
+        end
+        if v193 * 3 > v194 or v199 then
+            SetStatus('Going to zone (low coins)')
+            local v200 = GetBestZoneFolder()
+
+            if not v200:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v200.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v200.PERSISTENT.Teleport.CFrame
+
+                while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v200:FindFirstChild('INTERACT') do
+                    wait(0.01)
+                end
+
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v200:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+            end
+        else
+            SetStatus('Hatching eggs for normal pets')
+            local v201 = u14()
+            local _PriceHUD2 = u30():FindFirstChild('PriceHUD')
+            local v203, v204
+
+            if v201 == 3 then
+                v203 = 35
+                v204 = 30
+            else
+                v203 = 5
+                v204 = 1
+            end
+            if v203 <= (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - _PriceHUD2.Position).Magnitude then
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = _PriceHUD2.CFrame + _PriceHUD2.CFrame.LookVector * v204
+            end
+
+            u164()
+        end
+    elseif p172 == 'COLLECT_POTION' then
+        SetStatus('Combining potions', 'COLLECT_POTION')
+        u118(p173.neededamount)
+    elseif p172 == 'COLLECT_ENCHANT' then
+        SetStatus('Combining enchants', 'COLLECT_ENCHANT')
+        u129(p173.neededamount)
+    elseif p172 == 'BEST_COMET' then
+        SetStatus('Using comet', 'BEST_COMET')
+        local v205 = GetBestZoneFolder()
+
+        if not v205:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v205.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v205.PERSISTENT.Teleport.CFrame
+
+            while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v205:FindFirstChild('INTERACT') do
+                wait(0.01)
+            end
+
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v205:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+        end
+
+        UseComet()
+    elseif p172 == 'BEST_COIN_JAR' then
+        SetStatus('Using coin jar', 'BEST_COIN_JAR')
+        local v206 = GetBestZoneFolder()
+
+        if not v206:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v206.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v206.PERSISTENT.Teleport.CFrame
+
+            while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v206:FindFirstChild('INTERACT') do
+                wait(0.01)
+            end
+
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v206:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+        end
+
+        UseCoinJar()
+    elseif p172 == 'BEST_LUCKYBLOCK' then
+        SetStatus('Using lucky block', 'BEST_LUCKYBLOCK')
+        local v207 = GetBestZoneFolder()
+
+        if not v207:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v207.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v207.PERSISTENT.Teleport.CFrame
+
+            while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v207:FindFirstChild('INTERACT') do
+                wait(0.01)
+            end
+
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v207:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+        end
+
+        UseLuckyBlock()
+    elseif p172 == 'BEST_PINATA' then
+        SetStatus('Using pinata', 'BEST_PINATA')
+        local v208 = GetBestZoneFolder()
+
+        if not v208:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v208.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v208.PERSISTENT.Teleport.CFrame
+
+            while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v208:FindFirstChild('INTERACT') do
+                wait(0.01)
+            end
+
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v208:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+        end
+
+        UsePinata()
+    elseif p172 == 'USE_POTION' then
+        SetStatus('Using potion (tier ' .. tostring(p173.potiontier) .. ')', 'USE_POTION')
+        UsePotion(p173.potiontier, p173.neededamount)
+    elseif p172 == 'CURRENT_BREAKABLE' then
+        SetStatus('Moving to breakable spawn', 'CURRENT_BREAKABLE')
+        local v211 = GetBestZoneFolder()
+
+        if not v211:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v211.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v211.PERSISTENT.Teleport.CFrame
+
+            while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v211:FindFirstChild('INTERACT') do
+                wait(0.01)
+            end
+
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v211:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+        end
+    elseif p172 == 'BREAKABLE' then
+        SetStatus('Moving to breakable', 'BREAKABLE')
+        local v212 = GetBestZoneFolder()
+
+        if not v212:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v212.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v212.PERSISTENT.Teleport.CFrame
+
+            while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v212:FindFirstChild('INTERACT') do
+                wait(0.01)
+            end
+
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v212:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+        end
+    elseif p172 == 'HATCH_RARE_PET' then
+        SetStatus('Hatching rare pet', 'HATCH_RARE_PET')
+        local v213 = GetBestZoneFolder()
+
+        if not v213:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v213.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v213.PERSISTENT.Teleport.CFrame
+
+            while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v213:FindFirstChild('INTERACT') do
+                wait(0.01)
+            end
+
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v213:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+        end
+    elseif p172 == 'BEST_EGG' then
+        SetStatus('Working on best egg quest', 'BEST_EGG')
+        GetBestZoneFolder()
+
+        local v214 = u30()
+        local v215 = u14()
+        local _PriceHUD3 = v214.PriceHUD
+        local v217 = u17()
+
+        setthreadidentity(4)
+
+        local v218 = u13(GetBestEggModule())
+        local _neededamount2 = p173.neededamount
+        local _ = p173.amount
+
+        if _neededamount2 > 0 then
+            if v218 * _neededamount2 > v217 then
+                SetStatus('Farming coins for egg')
+                local v220 = GetBestZoneFolder()
+
+                if not v220:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v220.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+                    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v220.PERSISTENT.Teleport.CFrame
+
+                    while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v220:FindFirstChild('INTERACT') do
+                        wait(0.01)
+                    end
+
+                    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v220:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+                end
+            else
+                SetStatus('Buying and hatching eggs')
+                local v221, v222
+
+                if v215 == 3 then
+                    v221 = 35
+                    v222 = 30
+                else
+                    v221 = 5
+                    v222 = 1
+                end
+                if v221 <= (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - _PriceHUD3.Position).Magnitude then
+                    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = _PriceHUD3.CFrame + _PriceHUD3.CFrame.LookVector * v222
+                end
+
+                u164()
+            end
+        else
+            SetStatus('Teleporting to breakable spawn')
+            local v223 = GetBestZoneFolder()
+
+            if not v223:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v223.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v223.PERSISTENT.Teleport.CFrame
+
+                while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v223:FindFirstChild('INTERACT') do
+                    wait(0.01)
+                end
+
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v223:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+            end
+        end
+    else
+        SetStatus('Unknown quest - going to zone', p172)
+        local v224 = GetBestZoneFolder()
+
+        if not v224:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - v224.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v224.PERSISTENT.Teleport.CFrame
+
+            while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not v224:FindFirstChild('INTERACT') do
+                wait(0.01)
+            end
+
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v224:WaitForChild('INTERACT').BREAKABLE_SPAWNS.Main.CFrame
+        end
+    end
+end
+function GetQuestByID(p225)
+    local v226, v227, v228 = pairs(_Goals)
+
+    while true do
+        local v229
+
+        v228, v229 = v226(v227, v228)
+
+        if v228 == nil then
+            break
+        end
+        if p225 == v229 then
+            return v228, v229
+        end
+    end
+
+    return nil
+end
+function GetIDByQuest(p230)
+    local v231, v232, v233 = pairs(_Goals)
+
+    while true do
+        local v234
+
+        v233, v234 = v231(v232, v233)
+
+        if v233 == nil then
+            break
+        end
+        if p230 == v233 then
+            return v234, v233
+        end
+    end
+
+    return nil
+end
+
+local u235 = {}
+
+function GetActiveQuests()
+    table.clear(u235)
+
+    local _Goals2 = require(game:GetService('ReplicatedStorage').Library.Client.Save).Get().Goals
+    local v237, v238, v239 = pairs(_Goals2)
+
+    while true do
+        local v240
+
+        v239, v240 = v237(v238, v239)
+
+        if v239 == nil then
+            break
+        end
+
+        local _Stars = v240.Stars
+        local _Amount = v240.Amount
+        local _Progress = v240.Progress
+        local _Type = v240.Type
+        local v245 = v240.PotionTier or nil
+        local v246 = _Amount - _Progress
+        local v247 = GetQuestByID(_Type)
+
+        table.insert(u235, {
+            questname = v247,
+            priority = u106[v247] or 4,
+            amount = _Amount,
+            neededamount = v246,
+            queststars = _Stars,
+            id = _Type,
+            potiontier = v245,
+        })
+    end
+
+    return u235
+end
+
+local u248 = {}
+
+function GetZoneGateQuests()
+    table.clear(u248)
+
+    local v249 = GetCurrentZoneQuests()
+
+    if v249 then
+        local _Amount2 = v249.Amount
+        local _Progress2 = v249.Progress
+        local _Type2 = v249.Type
+        local v253 = v249.PotionTier or nil
+        local v254 = _Amount2 - _Progress2
+        local v255 = GetQuestByID(_Type2)
+        local v256 = u44()
+        local _ = v256.ZoneFolder
+        local v257 = u50()
+        local v258
+
+        if v257 then
+            v258 = u12(v257)
+        else
+            v258 = nil
+        end
+
+        local v259 = u17() or 0
+        local v260 = u6.GetNextRebirth()
+
+        if v260 and v256.ZoneNumber >= v260.ZoneNumberRequired then
+            u6.Rebirth(tostring(v260.RebirthNumber))
+        end
+        if v254 <= 0 and (v258 and v258 <= v259) then
+            local v261 = { v257._id }
+
+            game:GetService('ReplicatedStorage'):WaitForChild('Network'):WaitForChild('Zones_RequestPurchase'):InvokeServer(unpack(v261))
+        end
+
+        table.insert(u248, {
+            questname = v255,
+            priority = u106[v255] or 4,
+            amount = _Amount2,
+            neededamount = v254,
+            id = _Type2,
+            potiontier = v253,
+        })
+
+        return u248
+    end
+end
+function SortQuestsByPriority(p262)
+    local v263, v264, v265 = pairs(p262)
+
+    while true do
+        local v266
+
+        v265, v266 = v263(v264, v265)
+
+        if v265 == nil then
+            break
+        end
+
+        print(v266.questname, v266.priority)
+    end
+
+    table.sort(p262, function(p267, p268)
+        return p267.priority < p268.priority
+    end)
+
+    return p262
+end
+
+local function u275(p269, p270)
+    local v271, v272, v273 = pairs(_Inventory.Misc)
+
+    while true do
+        local v274
+
+        v273, v274 = v271(v272, v273)
+
+        if v273 == nil then
+            break
+        end
+        if v274.id == p269 then
+            return p270 <= (v274._am or 1), v273, v274._am or 1
+        end
+    end
+
+    return false, nil, 0
+end
+local function u282(p276, p277)
+    local v278, v279, v280 = pairs(_Inventory.Potion)
+
+    while true do
+        local v281
+
+        v280, v281 = v278(v279, v280)
+
+        if v280 == nil then
+            break
+        end
+        if p276 <= v281.tn and p277 <= (v281._am or 1) then
+            return p277 <= (v281._am or 1), v280, v281._am or 1
+        end
+    end
+
+    return false, nil, 0
+end
+local function u289(p283)
+    if p283 then
+        local v284, v285, v286 = pairs(_Inventory.Potion)
+
+        while true do
+            local v287
+
+            v286, v287 = v284(v285, v286)
+
+            if v286 == nil then
+                break
+            end
+            if v287.tn > 1 and v287.tn <= 4 then
+                setthreadidentity(4)
+
+                local v288 = u107(v287.tn) * p283
+
+                print('Potion Amount Check DEBUG PRINT', v288, v287._am or 1, v287.id, v287.tn)
+
+                if v288 <= (v287._am or 1) then
+                    return v288 <= (v287._am or 1), v286, v287._am
+                end
+            end
+        end
+
+        return false, nil, 0
+    end
+end
+local function u296(p290)
+    if p290 then
+        local v291, v292, v293 = pairs(_Inventory.Enchant)
+
+        while true do
+            local v294
+
+            v293, v294 = v291(v292, v293)
+
+            if v293 == nil then
+                break
+            end
+            if v294.tn > 1 and (v294.tn <= 3 and not table.find(u119, v294.id .. ' ' .. v294.tn)) then
+                setthreadidentity(4)
+
+                local v295 = u108(v294.tn) * p290
+
+                print('Enchant Amount Check DEBUG PRINT', v295, v294._am or 1, v294.id, v294.tn)
+
+                if v295 <= (v294._am or 1) then
+                    return v295 <= (v294._am or 1), v293, v294._am
+                end
+            end
+        end
+
+        return false, nil, 0
+    end
+end
+
+local _ = {
+    'Easy',
+    'Medium',
+    'Hard',
+    'Extreme',
+}
+
+function InitQuest()
+    UpdateInventory()
+
+    if GetBestZoneNumber() ~= u43().ZoneNumber then
+        if GetCurrentZoneQuests() then
+            print('MAKING ZONEGATEQUEST')
+
+            local v297 = u44()
+            local _ = v297.ZoneFolder
+            local v298 = u50()
+            local v299
+
+            if v298 then
+                v299 = u12(v298)
+            else
+                v299 = nil
+            end
+
+            local v300 = u17() or 0
+            local v301 = u6.GetNextRebirth() or nil
+
+            if v301 and v297.ZoneNumber >= v301.ZoneNumberRequired then
+                SetStatus('Rebirthing')
+                u6.Rebirth(tostring(v301.RebirthNumber))
+            elseif v299 and v299 <= v300 then
+                SetStatus('Purchasing next zone')
+                u2.Invoke('Zones_RequestPurchase', v298._id)
+            end
+
+            local v302, v303, v304 = pairs(SortQuestsByPriority(GetZoneGateQuests()))
+
+            while true do
+                local v305
+
+                v304, v305 = v302(v303, v304)
+
+                if v304 == nil then
+                    break
+                end
+
+                local u306 = false
+
+                local function v307()
+                    u306 = true
+                end
+
+                print(v304, v305.questname, '-- InitQuest')
+
+                local v308 = true
+                local v309 = 0
+
+                if v305.questname ~= 'BEST_COMET' then
+                    if v305.questname ~= 'BEST_COIN_JAR' then
+                        if v305.questname ~= 'BEST_LUCKYBLOCK' then
+                            if v305.questname ~= 'BEST_PINATA' then
+                                if v305.questname == 'USE_POTION' then
+                                    local v310
+                                    v308, v310, v309 = u282(v305.potiontier, v305.neededamount)
+                                end
+                            else
+                                local v311
+                                v308, v311, v309 = u275('Mini Pinata', v305.neededamount)
+                            end
+                        else
+                            local v312
+                            v308, v312, v309 = u275('Mini Lucky Block', v305.neededamount)
+                        end
+                    else
+                        local v313
+                        v308, v313, v309 = u275('Basic Coin Jar', v305.neededamount)
+                    end
+                else
+                    local v314
+                    v308, v314, v309 = u275('Comet', v305.neededamount)
+                end
+                if v308 then
+                    SetStatus('Zone gate quest', v305.questname)
+                    MakeQuest(v305.questname, {
+                        amount = v305.amount,
+                        potiontier = v305.potiontier,
+                        neededamount = v305.neededamount,
+                    })
+                    v307()
+                else
+                    print("You don't have enough resources for quest: " .. v305.questname .. ' (have: ' .. v309 .. ', need: ' .. v305.neededamount .. '). Skipping.')
+                end
+                if u306 then
+                    break
+                end
+            end
+        else
+            print('Farm Areas')
+            SetStatus('Farming best area', 'Waiting for quest')
+
+            local v315 = u44()
+            local _ZoneFolder = v315.ZoneFolder
+            local v317 = u50()
+            local v318
+
+            if v317 then
+                v318 = u12(v317)
+            else
+                v318 = nil
+            end
+
+            local v319 = u17() or 0
+            local v320 = u6.GetNextRebirth()
+
+            if v317 and v315.WorldNumber ~= v317.WorldNumber then
+                SetStatus('Teleporting to next world')
+                u2.Invoke('World' .. v317.WorldNumber .. 'Teleport')
+            elseif v320 and v315.ZoneNumber >= v320.ZoneNumberRequired then
+                SetStatus('Rebirthing')
+                u6.Rebirth(tostring(v320.RebirthNumber))
+            elseif v318 and v318 <= v319 then
+                SetStatus('Purchasing next zone')
+                u2.Invoke('Zones_RequestPurchase', v317._id)
+            elseif not _ZoneFolder:FindFirstChild('INTERACT') or (game.Players.LocalPlayer.Character.HumanoidRootPart.Position - _ZoneFolder.INTERACT.BREAKABLE_SPAWNS.Main.Position).Magnitude > 30 then
+                SetStatus('Teleporting to farm area')
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = _ZoneFolder.PERSISTENT.Teleport.CFrame
+
+                while game.Players.LocalPlayer.Character.Humanoid.FloorMaterial == 'Air' and not _ZoneFolder:FindFirstChild('INTERACT') do
+                    wait(0.01)
+                end
+
+                if _ZoneFolder:FindFirstChild('INTERACT') then
+                    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = _ZoneFolder.INTERACT.BREAKABLE_SPAWNS.Main.CFrame
+                end
+            end
+        end
+    else
+        local v321, v322, v323 = pairs(SortQuestsByPriority(GetActiveQuests()))
+
+        while true do
+            local v324
+
+            v323, v324 = v321(v322, v323)
+
+            if v323 == nil then
+                break
+            end
+
+            local u325 = false
+
+            local function v326()
+                u325 = true
+            end
+
+            print(v323, v324.questname, '-- InitQuest')
+
+            local v327 = true
+            local v328 = 0
+
+            if v324.questname ~= 'BEST_COMET' then
+                if v324.questname ~= 'BEST_COIN_JAR' then
+                    if v324.questname ~= 'BEST_LUCKYBLOCK' then
+                        if v324.questname ~= 'BEST_PINATA' then
+                            if v324.questname ~= 'USE_POTION' then
+                                if v324.questname ~= 'COLLECT_POTION' then
+                                    if v324.questname == 'COLLECT_ENCHANT' then
+                                        local v329
+                                        v327, v329, v328 = u296(v324.neededamount)
+                                    end
+                                else
+                                    local v330
+                                    v327, v330, v328 = u289(v324.neededamount)
+                                end
+                            else
+                                local v331
+                                v327, v331, v328 = u282(v324.potiontier, v324.neededamount)
+                            end
+                        else
+                            local v332
+                            v327, v332, v328 = u275('Mini Pinata', v324.neededamount)
+                        end
+                    else
+                        local v333
+                        v327, v333, v328 = u275('Mini Lucky Block', v324.neededamount)
+                    end
+                else
+                    local v334
+                    v327, v334, v328 = u275('Basic Coin Jar', v324.neededamount)
+                end
+            else
+                local v335
+                v327, v335, v328 = u275('Comet', v324.neededamount)
+            end
+            if v327 then
+                SetStatus('Active quest', v324.questname)
+                MakeQuest(v324.questname, {
+                    amount = v324.amount,
+                    potiontier = v324.potiontier,
+                    neededamount = v324.neededamount,
+                })
+                v326()
+            else
+                print("You don't have enough resources for quest: " .. v324.questname .. ' (have: ' .. v328 .. ', need: ' .. v324.neededamount .. '). Skipping.')
+            end
+            if u325 then
+                break
+            end
+        end
+    end
+end
+
+-- ════════════════════════════════════════
+--              MAIN LOOP
+-- ════════════════════════════════════════
+local lastPrint = 0
+
+while task.wait(0.5) do
+    InitQuest()
+
+    -- Print to console every 5 seconds instead of every loop
+    local now = tick()
+    if now - lastPrint >= 5 then
+        lastPrint = now
+        print('[MRC AutoRank] Status: ' .. CurrentStatus .. ' | Quest: ' .. CurrentQuest)
+    end
+end
